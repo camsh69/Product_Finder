@@ -1,16 +1,16 @@
-import { useState } from "react";
+import React, { useState } from "react";
 
 export default function Search({ onSearchItem }) {
-  const [description, setDescription] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const handleSubmit = e => {
     e.preventDefault();
 
-    if (!description) return;
+    if (!searchTerm.trim()) return;
 
-    onSearchItem(description);
+    onSearchItem(searchTerm);
 
-    setDescription("");
+    setSearchTerm("");
   };
 
   return (
@@ -19,8 +19,8 @@ export default function Search({ onSearchItem }) {
       <input
         type="text"
         placeholder="e.g. olive oil"
-        value={description}
-        onChange={e => setDescription(e.target.value)}
+        value={searchTerm}
+        onChange={e => setSearchTerm(e.target.value)}
       ></input>
       <button>Search</button>
     </form>

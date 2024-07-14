@@ -10,6 +10,7 @@ export default function App() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isNewSearch, setIsNewSearch] = useState(false);
+  const [totalResults, setTotalResults] = useState(0);
 
   const searchProducts = async (term, page = 1) => {
     setIsLoading(true);
@@ -34,6 +35,7 @@ export default function App() {
 
       setCurrentPage(data.currentPage);
       setHasMore(data.hasMore);
+      setTotalResults(data.totalResults);
     } catch (error) {
       console.error("Error:", error);
     } finally {
@@ -70,6 +72,7 @@ export default function App() {
         onGetMore={handleGetMore}
         isLoading={isLoading}
         isNewSearch={isNewSearch}
+        totalResults={totalResults}
       />
     </div>
   );

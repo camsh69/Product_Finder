@@ -1,9 +1,12 @@
+require("dotenv").config();
 const express = require("express");
 const xml2js = require("xml2js");
 const https = require("https");
 const cors = require("cors");
 const fs = require("fs").promises;
 const path = require("path");
+const { Translate } = require("@google-cloud/translate").v2;
+const foodDictionary = require("./foodDictionary");
 
 const app = express();
 const port = 3001;
@@ -11,6 +14,11 @@ const port = 3001;
 app.use(express.json());
 app.use(cors());
 
+// Initialize Google Translate
+const translate = new Translate({
+  projectId: process.env.GOOGLE_PROJECT_ID,
+  key: process.env.GOOGLE_API_KEY,
+});
 const userAgent =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 const sitemapUrl = "https://tienda.mercadona.es/sitemap.xml";
@@ -74,24 +82,119 @@ function processProducts(urls) {
   return urls.map(dato => {
     const id = dato.loc[0].split("/")[4];
     const productSlug = dato.loc[0].split("/")[5];
-    const query = productSlug?.split("-");
+    const query = productSlug
+      ? productSlug
+          .split("-")
+          .filter(
+            word =>
+              !["de", "la", "el", "y", "con", "sin", "para"].includes(
+                word.toLowerCase()
+              )
+          )
+          .filter(word => !/^\d+$/.test(word))
+          .filter(word => word.length > 1)
+      : [];
     const productUrl = `https://tienda.mercadona.es/api/products/${id}`;
     return { id, productUrl, query };
   });
 }
 
-function searchProducts(searchTerms, products) {
-  const lowercaseTerms = searchTerms.map(term => term.toLowerCase());
-  return products.filter(
-    product =>
-      product.query &&
-      lowercaseTerms.some(term =>
-        product.query.some(queryTerm => queryTerm.toLowerCase().includes(term))
-      )
-  );
+function removeAccents(str) {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-function fetchProductDetails(productUrl) {
+async function translateTerm(term, targetLanguage) {
+  const lowerTerm = term.toLowerCase();
+
+  // Check if the term is in our dictionary
+  if (foodDictionary[lowerTerm]) {
+    console.log("Food dictionary used");
+    return foodDictionary[lowerTerm];
+  }
+
+  // If not in dictionary, use Google Translate
+  try {
+    const [translation] = await translate.translate(
+      `grocery item: ${term}`,
+      targetLanguage
+    );
+    console.log("Using Google translate");
+    return translation.replace(/^(grocery item: |artículo comestible: )/i, "");
+  } catch (error) {
+    console.error("Translation error:", error);
+    return term; // Return original term if translation fails
+  }
+}
+
+async function translateTerms(terms, targetLanguage) {
+  return Promise.all(terms.map(term => translateTerm(term, targetLanguage)));
+}
+
+function searchProducts(searchTerms, products) {
+  const normalizedTerms = searchTerms.map(term =>
+    removeAccents(term.toLowerCase())
+  );
+
+  return products
+    .map(product => {
+      if (!product.query || !Array.isArray(product.query)) {
+        return { product, weight: 0 };
+      }
+
+      const productQueryString = removeAccents(
+        product.query.join(" ").toLowerCase()
+      );
+      const productQueryWords = productQueryString.split(/\s+/);
+
+      let matchCount = 0;
+      let fullTermMatches = 0;
+
+      normalizedTerms.forEach(term => {
+        const termWords = term.split(/\s+/);
+
+        // Check for full term match (exact phrase)
+        const fullTermRegex = new RegExp(`\\b${term}\\b`, "i");
+        if (fullTermRegex.test(productQueryString)) {
+          fullTermMatches++;
+          matchCount += termWords.length;
+        } else {
+          // Check for individual word matches
+          termWords.forEach(word => {
+            const wordRegex = new RegExp(`\\b${word}\\b`, "i");
+            if (wordRegex.test(productQueryString)) {
+              matchCount++;
+            }
+          });
+        }
+      });
+
+      // Calculate the ratio of matching terms to total words in the product query
+      const matchRatio = matchCount / productQueryWords.length;
+
+      // Calculate weight based on match count, full term matches, and match ratio
+      const weight = matchCount * 10 + fullTermMatches * 15 + matchRatio * 5;
+
+      return { product, weight };
+    })
+    .filter(result => result.weight > 0)
+    .sort((a, b) => b.weight - a.weight)
+    .map(result => result.product);
+}
+
+async function translateText(text, targetLanguage) {
+  try {
+    const [translation] = await translate.translate(
+      `grocery item: ${text}`,
+      targetLanguage
+    );
+    return translation.replace(/^(grocery item: |artículo comestible: )/i, "");
+  } catch (error) {
+    console.error("Translation error:", error);
+    return text; // Return original text if translation fails
+  }
+}
+
+async function fetchProductDetails(productUrl) {
   return new Promise((resolve, reject) => {
     const options = {
       headers: { "User-Agent": userAgent },
@@ -102,14 +205,21 @@ function fetchProductDetails(productUrl) {
         res.on("data", chunk => {
           data += chunk.toString();
         });
-        res.on("end", () => {
+        res.on("end", async () => {
           try {
             const productData = JSON.parse(data);
+            const translatedDescription = await translateText(
+              productData.details.description,
+              "en"
+            );
             resolve({
               id: productData.id,
               thumbnail: productData.photos[0]?.thumbnail,
               description: productData.details.description,
+              translatedDescription: translatedDescription,
               price: productData.price_instructions.unit_price,
+              unitSize: productData.price_instructions.unit_size,
+              sizeFormat: productData.price_instructions.size_format,
             });
           } catch (error) {
             reject(error);
@@ -130,22 +240,26 @@ async function fetchProductDetailsWithDelay(productUrl) {
 app.post("/search", async (req, res) => {
   try {
     const { searchTerms, page = 1 } = req.body;
+    console.log("Received search terms:", searchTerms);
     const startIndex = (page - 1) * resultsPerPage;
 
-    // Step 2: Cache a temporary copy of sitemap.xml
-    const sitemapData = await getSitemapData();
+    // Translate each search term to Spanish
+    const translatedSearchTerms = await translateTerms(searchTerms, "es");
+    console.log("Translated search terms:", translatedSearchTerms);
 
-    // Step 3: Search sitemap.xml for matching products
+    const sitemapData = await getSitemapData();
     const sitemapUrls = await parseSitemap(sitemapData);
     const allProducts = processProducts(sitemapUrls);
-    const matchingProducts = searchProducts(searchTerms, allProducts);
 
-    // Step 4 & 5: Parse id and product url, then fetch details for paginated matching products
+    const matchingProducts = searchProducts(translatedSearchTerms, allProducts);
+    console.log("Matching products found:", matchingProducts.length);
+
     const paginatedProducts = matchingProducts.slice(
       startIndex,
       startIndex + resultsPerPage
     );
     const detailedProducts = [];
+
     for (const product of paginatedProducts) {
       try {
         const details = await fetchProductDetailsWithDelay(product.productUrl);

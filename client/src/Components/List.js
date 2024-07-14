@@ -10,6 +10,7 @@ export default function List({
   onGetMore,
   isLoading,
   isNewSearch,
+  totalResults,
 }) {
   // If it's a new search or loading with no results, show spinner
   if (isNewSearch || (isLoading && searchResults.length === 0)) {
@@ -19,7 +20,10 @@ export default function List({
   // If there's a search term, but no results and not loading, show no results message
   if (searchTerm && searchResults.length === 0 && !isLoading) {
     return (
-      <p style={{ textAlign: "center" }}>No results found for "{searchTerm}"</p>
+      <p style={{ textAlign: "center" }}>
+        No results found for "{searchTerm}". Please try broadening your search
+        term.
+      </p>
     );
   }
 
@@ -32,15 +36,18 @@ export default function List({
     <div className="list">
       {!isNewSearch && searchTerm && (
         <p style={{ textAlign: "center" }}>
-          Your search for "{searchTerm}" returned the following results:
+          Your search for "{searchTerm}" returned {totalResults} results:
         </p>
       )}
       <ul>
         {searchResults.map(res => (
           <ListItem
+            translatedDescription={res.translatedDescription}
             description={res.description}
             thumbnail={res.thumbnail}
             price={res.price}
+            unitSize={res.unitSize}
+            sizeFormat={res.sizeFormat}
             key={res.id}
           />
         ))}
@@ -56,7 +63,14 @@ export default function List({
   );
 }
 
-function ListItem({ description, thumbnail, price }) {
+function ListItem({
+  translatedDescription,
+  description,
+  thumbnail,
+  price,
+  unitSize,
+  sizeFormat,
+}) {
   const [copyStatus, setCopyStatus] = useState(false);
   const textToCopy = description;
 
@@ -68,8 +82,12 @@ function ListItem({ description, thumbnail, price }) {
   return (
     <li>
       <img src={thumbnail} alt={description} />
+      <h3>
+        {translatedDescription} - {unitSize}
+        {sizeFormat} (€{price})
+      </h3>
       <span>
-        {description} (€{price})
+        {description}
         <CopyToClipboard text={textToCopy} onCopy={onCopyText}>
           <ActionsButton>Copy to Clipboard</ActionsButton>
         </CopyToClipboard>
