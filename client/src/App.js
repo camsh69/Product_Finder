@@ -15,7 +15,7 @@ export default function App() {
     handleSearch,
     searchProducts,
   } = useSearch();
-  const { currentPage, hasMore, setHasMore, handleGetMore } = usePagination();
+  const { hasMore, setHasMore, handleGetMore } = usePagination();
 
   const performSearch = async (term, page = 1) => {
     const data = await searchProducts(term, page);
