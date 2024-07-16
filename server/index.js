@@ -19,7 +19,7 @@ app.use(helmet());
 app.use(compression());
 app.use(morgan("combined"));
 app.use(limiter);
-app.enable("trust proxy");
+app.set("trust proxy", 1);
 
 // Input validation middleware
 const validateSearchInput = [
@@ -96,8 +96,11 @@ app.post("/search", validateSearchInput, async (req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  console.error(err);
+  res.status(500).json({
+    error: "An unexpected error occurred",
+    details: process.env.NODE_ENV === "development" ? err.message : undefined,
+  });
 });
 
 app.listen(port, () => {

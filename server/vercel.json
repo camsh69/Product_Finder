@@ -2,27 +2,14 @@
     "version": 2,
     "builds": [
         {
-            "src": "./index.js",
+            "src": "index.js",
             "use": "@vercel/node"
         }
     ],
     "routes": [
         {
-            "src": "/search",
-            "methods": [
-                "OPTIONS",
-                "POST"
-            ],
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept",
-                "Access-Control-Allow-Methods": "POST, OPTIONS"
-            },
-            "dest": "/index.js"
-        },
-        {
             "src": "/(.*)",
-            "dest": "/index.js"
+            "dest": "index.js"
         }
     ]
 }

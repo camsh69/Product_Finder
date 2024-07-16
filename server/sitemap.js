@@ -1,11 +1,14 @@
-const fs = require("fs").promises;
 const https = require("https");
 const xml2js = require("xml2js");
+const NodeCache = require("node-cache");
 
 // Import configuration
-const { userAgent, sitemapUrl, cachePath, cacheLifetime } = require("./config");
+const { userAgent, sitemapUrl, cacheLifetime } = require("./config");
 
-async function fetchAndCacheSitemap() {
+// Initialize cache
+const sitemapCache = new NodeCache({ stdTTL: cacheLifetime / 1000 }); // Convert milliseconds to seconds
+
+async function fetchSitemap() {
   return new Promise((resolve, reject) => {
     const options = {
       headers: { "User-Agent": userAgent },
@@ -16,13 +19,8 @@ async function fetchAndCacheSitemap() {
         res.on("data", chunk => {
           data += chunk.toString();
         });
-        res.on("end", async () => {
-          try {
-            await fs.writeFile(cachePath, data);
-            resolve(data);
-          } catch (error) {
-            reject(error);
-          }
+        res.on("end", () => {
+          resolve(data);
         });
       } else {
         reject(new Error(`HTTP error! status: ${res.statusCode}`));
@@ -32,15 +30,18 @@ async function fetchAndCacheSitemap() {
 }
 
 async function getSitemapData() {
+  const cachedData = sitemapCache.get("sitemap");
+  if (cachedData) {
+    return cachedData;
+  }
+
   try {
-    const stats = await fs.stat(cachePath);
-    const age = Date.now() - stats.mtime.getTime();
-    if (age > cacheLifetime) {
-      throw new Error("Cache expired");
-    }
-    return await fs.readFile(cachePath, "utf-8");
+    const data = await fetchSitemap();
+    sitemapCache.set("sitemap", data);
+    return data;
   } catch (error) {
-    return await fetchAndCacheSitemap();
+    console.error("Error fetching sitemap:", error);
+    throw error;
   }
 }
 
