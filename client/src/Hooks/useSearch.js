@@ -10,16 +10,19 @@ export function useSearch() {
   const searchProducts = async (term, page = 1) => {
     setIsLoading(true);
     try {
-      const response = await fetch("/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          searchTerms: term.split(" "),
-          page: page,
-        }),
-      });
+      const response = await fetch(
+        "https://product-finder-server.vercel.app/search",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            searchTerms: term.split(" "),
+            page: page,
+          }),
+        }
+      );
       const data = await response.json();
 
       if (page === 1) {
