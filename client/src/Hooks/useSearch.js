@@ -10,7 +10,7 @@ export function useSearch() {
   const searchProducts = async (term, page = 1) => {
     setIsLoading(true);
     try {
-      const response = await fetch("http://localhost:3001/search", {
+      const response = await fetch("api/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
