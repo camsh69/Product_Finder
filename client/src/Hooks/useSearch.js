@@ -11,8 +11,8 @@ export function useSearch() {
     setIsLoading(true);
     try {
       const response = await fetch(
-        // "https://product-finder-server.vercel.app/search",
-        "http://localhost:3001/search",
+        "https://product-finder-server.vercel.app/search",
+        // "http://localhost:3001/search",
         {
           method: "POST",
           headers: {
