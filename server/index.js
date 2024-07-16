@@ -12,14 +12,25 @@ const { processProducts, fetchProductDetailsWithDelay } = require("./products");
 
 const app = express();
 const port = process.env.PORT;
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
 
 app.use(express.json());
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: function (origin, callback) {
+      // allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        var msg =
+          "The CORS policy for this site does not allow access from the specified Origin.";
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-// app.use(cors());
 app.use(helmet());
 app.use(compression());
 app.use(morgan("combined"));
