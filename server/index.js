@@ -12,7 +12,6 @@ const { processProducts, fetchProductDetailsWithDelay } = require("./products");
 
 const app = express();
 const port = process.env.PORT;
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
 
 app.use(express.json());
 app.use(cors());
