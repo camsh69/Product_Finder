@@ -1,4 +1,5 @@
 const path = require("path");
+const rateLimit = require("express-rate-limit");
 
 module.exports = {
   userAgent:
@@ -8,4 +9,8 @@ module.exports = {
   cacheLifetime: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
   requestDelay: 1000, // 1 second delay between requests
   resultsPerPage: 6, // Number of results to return per request
+  limiter: rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+  }),
 };

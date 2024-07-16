@@ -1,18 +1,52 @@
 const express = require("express");
+const helmet = require("helmet");
 const cors = require("cors");
+const compression = require("compression");
+const morgan = require("morgan");
+const { body, validationResult } = require("express-validator");
 const { getSitemapData, parseSitemap } = require("./sitemap");
-const { resultsPerPage } = require("./config");
+const { resultsPerPage, limiter } = require("./config");
 const { translateTerms } = require("./translation");
 const { searchProducts } = require("./search");
 const { processProducts, fetchProductDetailsWithDelay } = require("./products");
 
 const app = express();
-const port = 3001;
+const port = process.env.PORT;
 
 app.use(express.json());
+// app.use(
+//   cors({
+//     origin: process.env.FRONTEND_URL,
+//   })
+// );
 app.use(cors());
+app.use(helmet());
+app.use(compression());
+app.use(morgan("combined"));
+app.use(limiter);
+app.enable("trust proxy");
 
-app.post("/search", async (req, res) => {
+// Input validation middleware
+const validateSearchInput = [
+  body("searchTerms").isArray().withMessage("searchTerms must be an array"),
+  body("searchTerms.*")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Each search term must be a non-empty string"),
+  body("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+];
+
+app.post("/search", validateSearchInput, async (req, res) => {
+  // Check for validation errors
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
     const { searchTerms, page = 1 } = req.body;
     console.log("Received search terms:", searchTerms);
@@ -33,23 +67,23 @@ app.post("/search", async (req, res) => {
       startIndex,
       startIndex + resultsPerPage
     );
-    const detailedProducts = [];
+    const detailedProducts = await Promise.all(
+      paginatedProducts.map(async product => {
+        try {
+          return await fetchProductDetailsWithDelay(product.productUrl);
+        } catch (error) {
+          console.error(
+            `Error fetching details for product ${product.id}:`,
+            error
+          );
+          return {
+            id: product.id,
+            error: "Failed to fetch details",
+          };
+        }
+      })
+    );
 
-    for (const product of paginatedProducts) {
-      try {
-        const details = await fetchProductDetailsWithDelay(product.productUrl);
-        detailedProducts.push(details);
-      } catch (error) {
-        console.error(
-          `Error fetching details for product ${product.id}:`,
-          error
-        );
-        detailedProducts.push({
-          id: product.id,
-          error: "Failed to fetch details",
-        });
-      }
-    }
     res.json({
       products: detailedProducts,
       totalResults: matchingProducts.length,
@@ -63,6 +97,12 @@ app.post("/search", async (req, res) => {
       .status(500)
       .json({ error: "An error occurred while processing your request" });
   }
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
 });
 
 app.listen(port, () => {
